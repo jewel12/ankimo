@@ -3,7 +3,7 @@ export GOARCH := arm
 
 CRED := service_account.json
 
-.PHONY: clean recorder
+.PHONY: clean recorder gcf/*
 
 record: recorder
 	./recorder -c ${CRED}
