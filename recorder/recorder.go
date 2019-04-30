@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"os"
 	"context"
 	"encoding/json"
 	"flag"
@@ -14,6 +16,7 @@ import (
 )
 
 var (
+	fromStdin   = flag.Bool("s", true, "Read Stats JSON from STDIN")
 	ankiConnect = flag.String("a", "http://127.0.0.1:8765/", "Host running AnkiConnect")
 	cred        = flag.String("c", "path/to/serviceAccount.json", "Path to the credential")
 )
@@ -38,7 +41,7 @@ type TodayStats struct {
 	Time  int `json:"time"`
 }
 
-func getTodayStats(ankiConnect string) (TodayStats, error) {
+func getTodayStatsFromAnkiConnect(ankiConnect string) (TodayStats, error) {
 	// iOS アプリ等と Sync する
 	r1, err := reqToAnkiConnect(ankiConnect, `{"action": "sync", "version": 6}`)
 	if err != nil {
@@ -64,6 +67,19 @@ func getTodayStats(ankiConnect string) (TodayStats, error) {
 	return res.Result, nil
 }
 
+func readTodayStatsFromStdin() (TodayStats, error) {
+  stdin := bufio.NewScanner(os.Stdin)
+  stdin.Scan()
+
+  var stats TodayStats
+
+	if err := json.Unmarshal(stdin.Bytes(), &stats); err != nil {
+		return TodayStats{}, err
+	}
+
+	return stats, nil
+}
+
 func add(ctx context.Context, credFilePath string, stats TodayStats) error {
 	sa := option.WithCredentialsFile(credFilePath)
 	app, err := firebase.NewApp(ctx, nil, sa)
@@ -80,7 +96,7 @@ func add(ctx context.Context, credFilePath string, stats TodayStats) error {
 	t := time.Now()
 	docKey := t.Format("2006-01-02")
 	collection := client.Collection("StudyRecords")
-	doc := collection.Doc(docKey)
+  doc := collection.Doc(docKey)
 	if _, err := doc.Set(ctx, map[string]interface{}{
 		"cards": stats.Cards,
 		"time":  stats.Time,
@@ -90,9 +106,17 @@ func add(ctx context.Context, credFilePath string, stats TodayStats) error {
 	return nil
 }
 
+func getTodayStats() (TodayStats, error) {
+  if *fromStdin {
+	  return readTodayStatsFromStdin()
+  } else {
+	  return getTodayStatsFromAnkiConnect(*ankiConnect)
+  }
+}
+
 func main() {
 	flag.Parse()
-	stats, err := getTodayStats(*ankiConnect)
+  stats, err := getTodayStats()
 	log.Println("Get a study record from Anki.")
 	if err != nil {
 		log.Fatalln(err)
